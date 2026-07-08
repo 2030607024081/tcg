@@ -1,0 +1,1042 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TCG Multi-Tool</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Roboto+Mono:wght@700&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Tone.js for dynamic sound effects -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Roboto Mono', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            touch-action: manipulation;
+            overflow: hidden;
+            background-color: #121214;
+        }
+
+        /* ダメージ時の画面シェイク */
+        @keyframes shake {
+            0% { transform: translate(0, 0); }
+            10% { transform: translate(-8px, -3px); }
+            20% { transform: translate(7px, 4px); }
+            30% { transform: translate(-6px, 5px); }
+            40% { transform: translate(5px, -3px); }
+            50% { transform: translate(-4px, 2px); }
+            60% { transform: translate(5px, 3px); }
+            70% { transform: translate(-4px, -3px); }
+            85% { transform: translate(3px, 3px); }
+            100% { transform: translate(0, 0); }
+        }
+        .animate-shake {
+            animation: shake 0.25s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        /* ポップアップエフェクト */
+        @keyframes float-up {
+            0% { transform: translate(-50%, 0) scale(0.6); opacity: 0; }
+            15% { transform: translate(-50%, -30px) scale(1.3); opacity: 1; }
+            80% { opacity: 1; }
+            100% { transform: translate(-50%, -70px) scale(0.9); opacity: 0; }
+        }
+        .pop-effect {
+            animation: float-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            text-shadow: 0px 6px 15px rgba(0,0,0,0.8);
+        }
+
+        /* フラッシュ */
+        @keyframes flash-red {
+            0% { background-color: rgba(239, 68, 68, 0.25); }
+            100% { background-color: transparent; }
+        }
+        .flash-dmg {
+            animation: flash-red 0.3s ease-out forwards;
+        }
+
+        @keyframes flash-green {
+            0% { background-color: rgba(16, 185, 129, 0.25); }
+            100% { background-color: transparent; }
+        }
+        .flash-heal {
+            animation: flash-green 0.3s ease-out forwards;
+        }
+
+        /* 成功・失敗アニメーション */
+        @keyframes pop-result {
+            0% { transform: scale(0.8); opacity: 0; }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .result-bounce {
+            animation: pop-result 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+
+        input::-webkit-outer-spin-button,
+        input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        /* スクロールバーをオシャレにカスタマイズ */
+        .scrollable-area::-webkit-scrollbar {
+            width: 6px;
+        }
+        .scrollable-area::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .scrollable-area::-webkit-scrollbar-thumb {
+            background: #262626;
+            border-radius: 9999px;
+        }
+        .scrollable-area::-webkit-scrollbar-thumb:hover {
+            background: #404040;
+        }
+    </style>
+</head>
+<body class="w-screen h-screen flex flex-col font-sans text-neutral-200 select-none">
+
+    <!-- ナビゲーションバー & ツールバー (よりデカく押しやすく) -->
+    <header class="bg-neutral-900 border-b border-neutral-800 px-6 py-4 flex items-center justify-between z-50 text-lg shrink-0">
+        <div class="flex items-center gap-3 sm:gap-6">
+            <!-- ページ切り替えタブ (サイズ大幅UP) -->
+            <button onclick="switchPage('counter')" id="tab-counter" class="px-5 py-3 sm:px-6 sm:py-4 rounded-xl font-bold transition flex items-center gap-3 bg-neutral-800 text-neutral-100 border border-neutral-700 text-base sm:text-lg">
+                <i data-lucide="swords" class="w-6 h-6"></i>
+                <span>HP COUNTER</span>
+            </button>
+            <button onclick="switchPage('calc')" id="tab-calc" class="px-5 py-3 sm:px-6 sm:py-4 rounded-xl font-bold transition flex items-center gap-3 text-neutral-400 hover:text-neutral-200 text-base sm:text-lg">
+                <i data-lucide="calculator" class="w-6 h-6"></i>
+                <span>CALCULATOR</span>
+            </button>
+            <button onclick="switchPage('prob')" id="tab-prob" class="px-5 py-3 sm:px-6 sm:py-4 rounded-xl font-bold transition flex items-center gap-3 text-neutral-400 hover:text-neutral-200 text-base sm:text-lg">
+                <i data-lucide="dices" class="w-6 h-6"></i>
+                <span>CHANCE TRIGGER</span>
+            </button>
+        </div>
+
+        <div class="flex items-center gap-4">
+            <!-- 音声トグル -->
+            <button id="soundToggleBtn" onclick="toggleSound()" class="bg-neutral-800 hover:bg-neutral-700 text-neutral-300 p-3 sm:p-4 rounded-xl border border-neutral-700 transition flex items-center gap-3">
+                <i data-lucide="volume-2" class="w-6 h-6" id="soundIcon"></i>
+                <span id="soundLabel" class="hidden lg:inline font-bold text-base">SOUND ON</span>
+            </button>
+
+            <!-- 一括リセット -->
+            <button id="reset-all-btn" onclick="resetAll()" class="bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-neutral-200 p-3 sm:p-4 rounded-xl border border-neutral-700 transition flex items-center gap-3">
+                <i data-lucide="rotate-ccw" class="w-6 h-6"></i>
+                <span class="hidden lg:inline font-bold text-base">RESET ALL</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- メインコンテンツエリア -->
+    <div class="flex-1 relative w-full h-full bg-neutral-950 overflow-hidden">
+
+        <!-- 1. HPカウンターページ -->
+        <section id="page-counter" class="absolute inset-0 flex w-full h-full divide-x divide-neutral-800 transition-opacity duration-200">
+            
+            <!-- PLAYER 1 (左半分) - スクロール可能に設定してUI崩れを完全防御 -->
+            <section id="p1-area" class="flex-1 overflow-y-auto scrollable-area relative transition-colors duration-300">
+                <div id="p1-flash" class="absolute inset-0 pointer-events-none z-10"></div>
+                
+                <!-- 内部ラッパー：最小高さを100%にして、原本の縦型レイアウトアスペクトを100%完全に保護 -->
+                <div class="min-h-full flex flex-col justify-between p-5 sm:p-8 relative">
+                    
+                    <!-- 上部: 名前と全体選択チェックトグル -->
+                    <div class="flex justify-between items-center z-20 shrink-0">
+                        <input type="text" id="p1-name" value="PLAYER 1" class="bg-transparent font-bold text-xl sm:text-2xl text-neutral-400 focus:text-white focus:outline-none w-40 uppercase tracking-wider">
+                        <button onclick="toggleSelectAll(1)" class="text-sm sm:text-base bg-neutral-900 border border-neutral-800 px-4 py-2 rounded-xl font-bold text-neutral-400 hover:text-neutral-200 active:scale-95 transition">
+                            ALL ON/OFF
+                        </button>
+                    </div>
+
+                    <!-- 中央: バトルフィールド（メイン） -->
+                    <div class="flex-1 flex flex-col justify-center items-center relative py-4 z-20 min-h-0">
+                        <!-- ポップアップ格納容器 -->
+                        <div id="p1-pop-container" class="absolute inset-0 pointer-events-none z-30"></div>
+                        
+                        <div id="p1-battle-card" class="flex flex-col items-center p-8 bg-neutral-900/40 rounded-3xl border border-neutral-800 w-full max-w-lg relative">
+                            <!-- 一括選択用チェックボックス (タップしやすいよう超拡大) -->
+                            <label class="absolute top-4 left-4 flex items-center gap-3 cursor-pointer p-3 select-none">
+                                <input type="checkbox" id="p1-check-battle" checked onchange="updateCheckState(1)" class="w-7 h-7 sm:w-8 sm:h-8 rounded border-neutral-700 bg-neutral-950 text-amber-500 focus:ring-0 cursor-pointer">
+                                <span class="text-xs sm:text-sm font-bold text-neutral-500">BATTLE</span>
+                            </label>
+
+                            <!-- MAX HP 設定 -->
+                            <div class="absolute top-4 right-4 text-xs sm:text-sm text-neutral-500 font-bold flex items-center gap-2 p-2">
+                                <span>MAX:</span>
+                                <input type="number" id="p1-max" value="10000" class="bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-1.5 w-24 sm:w-28 text-center font-mono text-neutral-300 focus:outline-none text-base" onchange="updateMaxHp(1, 'battle', 0, this.value)">
+                            </div>
+
+                            <!-- 巨大HP表示 -->
+                            <div class="mt-12 mb-4 flex flex-col items-center w-full overflow-hidden">
+                                <span id="p1-hp" class="text-7xl sm:text-8xl md:text-9xl font-mono font-bold tracking-tight text-neutral-100 leading-none truncate max-w-full">
+                                    10000
+                                </span>
+                                <div class="w-full h-3 bg-neutral-800 mt-6 rounded-full overflow-hidden">
+                                    <div id="p1-bar" class="h-full bg-neutral-400 transition-all duration-300 w-full"></div>
+                                </div>
+                            </div>
+
+                            <!-- 撃破時待機オーバーレイ (DEATH - タップでフルHP復活) -->
+                            <div id="p1-dead" class="hidden absolute inset-0 bg-neutral-950/95 flex flex-col items-center justify-center z-40 rounded-3xl cursor-pointer hover:bg-neutral-900/95 transition" onclick="revive(1, 'battle', 0)">
+                                <span class="text-6xl sm:text-7xl font-extrabold tracking-widest text-red-600 drop-shadow-md">DEATH</span>
+                                <span class="text-sm sm:text-base font-bold text-neutral-500 mt-4 animate-pulse">TAP TO REVIVE (FULL HP)</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ベンチエリア (5枚並び - 高さを拡張) -->
+                    <div class="grid grid-cols-5 gap-3 sm:gap-4 z-20 shrink-0 mt-2 mb-4">
+                        <div id="p1-bench-container" class="col-span-5 grid grid-cols-5 gap-3 sm:gap-4"></div>
+                    </div>
+
+                    <!-- 下部: 一括操作用直接数字入力 & ＋ーボタン (操作しやすいようデカく) -->
+                    <div class="flex flex-col gap-4 z-20 shrink-0 max-w-lg mx-auto w-full">
+                        <div class="flex items-center gap-3 bg-neutral-900 rounded-2xl p-2 border border-neutral-800">
+                            <input type="number" id="p1-input" pattern="[0-9]*" inputmode="numeric" placeholder="数値を入力..." class="bg-transparent flex-1 text-center text-4xl font-mono font-bold text-neutral-100 p-3 focus:outline-none" onfocus="this.select()">
+                            <button onclick="clearInput(1)" class="text-neutral-500 hover:text-neutral-300 p-4 bg-neutral-800 rounded-xl transition active:scale-95">
+                                <i data-lucide="x" class="w-7 h-7"></i>
+                            </button>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-4">
+                            <button onclick="applyDamage(1)" class="py-5 sm:py-6 bg-red-950/50 hover:bg-red-900/60 active:bg-red-800/70 text-red-400 rounded-2xl font-bold transition border border-red-900/40 flex items-center justify-center gap-3 text-lg sm:text-xl">
+                                <i data-lucide="minus" class="w-6 h-6 sm:w-7 sm:h-7"></i>
+                                <span>DAMAGE</span>
+                            </button>
+                            <button onclick="applyHeal(1)" class="py-5 sm:py-6 bg-emerald-950/50 hover:bg-emerald-900/60 active:bg-emerald-800/70 text-emerald-400 rounded-2xl font-bold transition border border-emerald-900/40 flex items-center justify-center gap-3 text-lg sm:text-xl">
+                                <i data-lucide="plus" class="w-6 h-6 sm:w-7 sm:h-7"></i>
+                                <span>HEAL</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- フリーメモ帳 (Player 1 専用) - 下にちょっとスクロールで出現する位置 -->
+                    <div class="mt-6 mb-2 z-20 shrink-0 max-w-lg mx-auto w-full">
+                        <div class="bg-neutral-900/40 rounded-2xl p-3 border border-neutral-800/80">
+                            <span class="text-xs font-bold text-neutral-500 uppercase tracking-wider block mb-2">PLAYER 1 MEMO</span>
+                            <textarea id="p1-note" placeholder="フリーメモを入力..." class="bg-transparent w-full h-32 text-neutral-200 placeholder-neutral-700 focus:outline-none resize-none text-base font-sans scrollable-area" oninput="saveNote(1, this.value)"></textarea>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
+            <!-- PLAYER 2 (右半分) - スクロール可能に設定してUI崩れを完全防御 -->
+            <section id="p2-area" class="flex-1 overflow-y-auto scrollable-area relative transition-colors duration-300">
+                <div id="p2-flash" class="absolute inset-0 pointer-events-none z-10"></div>
+
+                <!-- 内部ラッパー：最小高さを100%にして、原本の縦型レイアウトアスペクトを100%完全に保護 -->
+                <div class="min-h-full flex flex-col justify-between p-5 sm:p-8 relative">
+
+                    <!-- 上部: 名前と全体選択チェックトグル -->
+                    <div class="flex justify-between items-center z-20 shrink-0">
+                        <input type="text" id="p2-name" value="PLAYER 2" class="bg-transparent font-bold text-xl sm:text-2xl text-neutral-400 focus:text-white focus:outline-none w-40 uppercase tracking-wider">
+                        <button onclick="toggleSelectAll(2)" class="text-sm sm:text-base bg-neutral-900 border border-neutral-800 px-4 py-2 rounded-xl font-bold text-neutral-400 hover:text-neutral-200 active:scale-95 transition">
+                            ALL ON/OFF
+                        </button>
+                    </div>
+
+                    <!-- 中央: バトルフィールド（メイン） -->
+                    <div class="flex-1 flex flex-col justify-center items-center relative py-4 z-20 min-h-0">
+                        <div id="p2-pop-container" class="absolute inset-0 pointer-events-none z-30"></div>
+                        
+                        <div id="p2-battle-card" class="flex flex-col items-center p-8 bg-neutral-900/40 rounded-3xl border border-neutral-800 w-full max-w-lg relative">
+                            <!-- 一括選択用チェックボックス (超拡大) -->
+                            <label class="absolute top-4 left-4 flex items-center gap-3 cursor-pointer p-3 select-none">
+                                <input type="checkbox" id="p2-check-battle" checked onchange="updateCheckState(2)" class="w-7 h-7 sm:w-8 sm:h-8 rounded border-neutral-700 bg-neutral-950 text-amber-500 focus:ring-0 cursor-pointer">
+                                <span class="text-xs sm:text-sm font-bold text-neutral-500">BATTLE</span>
+                            </label>
+
+                            <!-- MAX HP 設定 -->
+                            <div class="absolute top-4 right-4 text-xs sm:text-sm text-neutral-500 font-bold flex items-center gap-2 p-2">
+                                <span>MAX:</span>
+                                <input type="number" id="p2-max" value="10000" class="bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-1.5 w-24 sm:w-28 text-center font-mono text-neutral-300 focus:outline-none text-base" onchange="updateMaxHp(2, 'battle', 0, this.value)">
+                            </div>
+
+                            <!-- 巨大HP表示 -->
+                            <div class="mt-12 mb-4 flex flex-col items-center w-full overflow-hidden">
+                                <span id="p2-hp" class="text-7xl sm:text-8xl md:text-9xl font-mono font-bold tracking-tight text-neutral-100 leading-none truncate max-w-full">
+                                    10000
+                                </span>
+                                <div class="w-full h-2 bg-neutral-800 mt-6 rounded-full overflow-hidden">
+                                    <div id="p2-bar" class="h-full bg-neutral-400 transition-all duration-300 w-full"></div>
+                                </div>
+                            </div>
+
+                            <!-- 撃破時待機オーバーレイ (DEATH - タップでフルHP復活) -->
+                            <div id="p2-dead" class="hidden absolute inset-0 bg-neutral-950/95 flex flex-col items-center justify-center z-40 rounded-3xl cursor-pointer hover:bg-neutral-900/95 transition" onclick="revive(2, 'battle', 0)">
+                                <span class="text-6xl sm:text-7xl font-extrabold tracking-widest text-red-600 drop-shadow-md">DEATH</span>
+                                <span class="text-sm sm:text-base font-bold text-neutral-500 mt-4 animate-pulse">TAP TO REVIVE (FULL HP)</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ベンチエリア (5枚並び - 高さを拡張) -->
+                    <div class="grid grid-cols-5 gap-3 sm:gap-4 z-20 shrink-0 mt-2 mb-4">
+                        <div id="p2-bench-container" class="col-span-5 grid grid-cols-5 gap-3 sm:gap-4"></div>
+                    </div>
+
+                    <!-- 下部: 一括操作用直接数字入力 & ＋ーボタン (操作しやすいようデカく) -->
+                    <div class="flex flex-col gap-4 z-20 shrink-0 max-w-lg mx-auto w-full">
+                        <div class="flex items-center gap-3 bg-neutral-900 rounded-2xl p-2 border border-neutral-800">
+                            <input type="number" id="p2-input" pattern="[0-9]*" inputmode="numeric" placeholder="数値を入力..." class="bg-transparent flex-1 text-center text-3xl font-mono font-bold text-neutral-100 p-3 focus:outline-none" onfocus="this.select()">
+                            <button onclick="clearInput(2)" class="text-neutral-500 hover:text-neutral-300 p-4 bg-neutral-800 rounded-xl transition active:scale-95">
+                                <i data-lucide="x" class="w-7 h-7"></i>
+                            </button>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-4">
+                            <button onclick="applyDamage(2)" class="py-5 sm:py-6 bg-red-950/50 hover:bg-red-900/60 active:bg-red-800/70 text-red-400 rounded-2xl font-bold transition border border-red-900/40 flex items-center justify-center gap-3 text-lg sm:text-xl">
+                                <i data-lucide="minus" class="w-6 h-6 sm:w-7 sm:h-7"></i>
+                                <span>DAMAGE</span>
+                            </button>
+                            <button onclick="applyHeal(2)" class="py-5 sm:py-6 bg-emerald-950/50 hover:bg-emerald-900/60 active:bg-emerald-800/70 text-emerald-400 rounded-2xl font-bold transition border border-emerald-900/40 flex items-center justify-center gap-3 text-lg sm:text-xl">
+                                <i data-lucide="plus" class="w-6 h-6 sm:w-7 sm:h-7"></i>
+                                <span>HEAL</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- フリーメモ帳 (Player 2 専用) - 下にちょっとスクロールで出現する位置 -->
+                    <div class="mt-6 mb-2 z-20 shrink-0 max-w-lg mx-auto w-full">
+                        <div class="bg-neutral-900/40 rounded-2xl p-3 border border-neutral-800/80">
+                            <span class="text-xs font-bold text-neutral-500 uppercase tracking-wider block mb-2">PLAYER 2 MEMO</span>
+                            <textarea id="p2-note" placeholder="フリーメモを入力..." class="bg-transparent w-full h-32 text-neutral-200 placeholder-neutral-700 focus:outline-none resize-none text-base font-sans scrollable-area" oninput="saveNote(2, this.value)"></textarea>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+        </section>
+
+        <!-- 2. TCG電卓ページ (フォント・ボタンを大幅拡大) -->
+        <section id="page-calc" class="absolute inset-0 hidden w-full h-full flex flex-col justify-center items-center p-8 bg-neutral-950 transition-opacity duration-200">
+            <div class="w-full max-w-3xl bg-neutral-900 rounded-[2.5rem] border border-neutral-800 p-10 flex flex-col gap-8">
+                <span class="text-base font-bold text-neutral-400 tracking-wider">TCG CALCULATOR</span>
+                
+                <!-- ディスプレイ -->
+                <div class="bg-neutral-950 rounded-2xl p-8 border border-neutral-800/80 text-right">
+                    <div id="calc-history" class="text-lg text-neutral-500 font-mono h-6 overflow-hidden"></div>
+                    <div id="calc-display" class="text-7xl font-mono font-bold text-neutral-100 mt-2 truncate">0</div>
+                </div>
+
+                <!-- ボタンレイアウト (極大化) -->
+                <div class="grid grid-cols-4 gap-4 text-4xl font-bold font-mono">
+                    <button onclick="pressCalc('C')" class="py-7 bg-neutral-800 hover:bg-neutral-700 active:bg-neutral-600 text-red-400 rounded-2xl transition active:scale-95">C</button>
+                    <button onclick="pressCalc('(')" class="py-7 bg-neutral-800 hover:bg-neutral-700 active:bg-neutral-600 text-neutral-300 rounded-2xl transition active:scale-95">(</button>
+                    <button onclick="pressCalc(')')" class="py-7 bg-neutral-800 hover:bg-neutral-700 active:bg-neutral-600 text-neutral-300 rounded-2xl transition active:scale-95">)</button>
+                    <button onclick="pressCalc('/')" class="py-7 bg-neutral-800 hover:bg-neutral-700 active:bg-neutral-600 text-amber-500 rounded-2xl transition active:scale-95">÷</button>
+
+                    <button onclick="pressCalc('7')" class="py-7 bg-neutral-950 hover:bg-neutral-800 active:bg-neutral-700 text-neutral-200 rounded-2xl transition active:scale-95">7</button>
+                    <button onclick="pressCalc('8')" class="py-7 bg-neutral-950 hover:bg-neutral-800 active:bg-neutral-700 text-neutral-200 rounded-2xl transition active:scale-95">8</button>
+                    <button onclick="pressCalc('9')" class="py-7 bg-neutral-950 hover:bg-neutral-800 active:bg-neutral-700 text-neutral-200 rounded-2xl transition active:scale-95">9</button>
+                    <button onclick="pressCalc('*')" class="py-7 bg-neutral-800 hover:bg-neutral-700 active:bg-neutral-600 text-amber-500 rounded-2xl transition active:scale-95">×</button>
+
+                    <button onclick="pressCalc('4')" class="py-7 bg-neutral-950 hover:bg-neutral-800 active:bg-neutral-700 text-neutral-200 rounded-2xl transition active:scale-95">4</button>
+                    <button onclick="pressCalc('5')" class="py-7 bg-neutral-950 hover:bg-neutral-800 active:bg-neutral-700 text-neutral-200 rounded-2xl transition active:scale-95">5</button>
+                    <button onclick="pressCalc('6')" class="py-7 bg-neutral-950 hover:bg-neutral-800 active:bg-neutral-700 text-neutral-200 rounded-2xl transition active:scale-95">6</button>
+                    <button onclick="pressCalc('-')" class="py-7 bg-neutral-800 hover:bg-neutral-700 active:bg-neutral-600 text-amber-500 rounded-2xl transition active:scale-95">-</button>
+
+                    <button onclick="pressCalc('1')" class="py-7 bg-neutral-950 hover:bg-neutral-800 active:bg-neutral-700 text-neutral-200 rounded-2xl transition active:scale-95">1</button>
+                    <button onclick="pressCalc('2')" class="py-7 bg-neutral-950 hover:bg-neutral-800 active:bg-neutral-700 text-neutral-200 rounded-2xl transition active:scale-95">2</button>
+                    <button onclick="pressCalc('3')" class="py-7 bg-neutral-950 hover:bg-neutral-800 active:bg-neutral-700 text-neutral-200 rounded-2xl transition active:scale-95">3</button>
+                    <button onclick="pressCalc('+')" class="py-7 bg-neutral-800 hover:bg-neutral-700 active:bg-neutral-600 text-amber-500 rounded-2xl transition active:scale-95">+</button>
+
+                    <button onclick="pressCalc('0')" class="py-7 bg-neutral-950 hover:bg-neutral-800 active:bg-neutral-700 text-neutral-200 rounded-2xl transition active:scale-95">0</button>
+                    <button onclick="pressCalc('00')" class="py-7 bg-neutral-950 hover:bg-neutral-800 active:bg-neutral-700 text-neutral-200 rounded-2xl transition active:scale-95">00</button>
+                    <button onclick="pressCalc('.')" class="py-7 bg-neutral-950 hover:bg-neutral-800 active:bg-neutral-700 text-neutral-200 rounded-2xl transition active:scale-95">.</button>
+                    <button onclick="pressCalc('=')" class="py-7 bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-neutral-950 rounded-2xl transition active:scale-95">=</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. CHANCE TRIGGER (確率判定 & ステルスイカサマ) -->
+        <section id="page-prob" class="absolute inset-0 hidden w-full h-full flex flex-col justify-center items-center p-8 bg-neutral-950 transition-opacity duration-200 overflow-y-auto">
+            <div class="w-full max-w-2xl bg-neutral-900 rounded-[2.5rem] border border-neutral-800 p-10 flex flex-col gap-8">
+                
+                <div class="flex flex-col gap-2">
+                    <span class="text-base font-bold text-neutral-400 tracking-wider block">CHANCE TRIGGER</span>
+                    <span class="text-sm text-neutral-500 block">指定した確率（％）で裏でダイス（乱数）を振って判定するやで</span>
+                </div>
+
+                <!-- 確率スライダー & 入力 (ステルスイカサマのためにテキスト入力に設定) -->
+                <div class="flex flex-col gap-6 mt-4">
+                    <div class="flex justify-between items-center">
+                        <span class="text-xl font-bold text-neutral-400">成功確率</span>
+                        <div class="relative flex items-center w-36">
+                            <input type="text" id="chance-pct" value="30" class="bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 w-full text-center font-mono text-2xl font-bold text-neutral-100 focus:outline-none focus:border-neutral-700" oninput="syncChanceSlider(this.value)">
+                            <span class="absolute right-4 text-neutral-500 font-mono font-bold text-lg">%</span>
+                        </div>
+                    </div>
+                    <input type="range" id="chance-slider" min="0" max="100" value="30" class="w-full h-3 bg-neutral-850 rounded-full appearance-none cursor-pointer accent-amber-500" oninput="syncChanceInput(this.value)">
+                </div>
+
+                <!-- 確率クイックボタン -->
+                <div class="flex flex-wrap gap-3 justify-center">
+                    <button onclick="setChancePct(10)" class="px-6 py-3.5 bg-neutral-850 text-base font-mono font-bold rounded-xl border border-neutral-800 text-neutral-400 hover:text-neutral-200 active:scale-95 transition">10%</button>
+                    <button onclick="setChancePct(25)" class="px-6 py-3.5 bg-neutral-850 text-base font-mono font-bold rounded-xl border border-neutral-800 text-neutral-400 hover:text-neutral-200 active:scale-95 transition">25%</button>
+                    <button onclick="setChancePct(30)" class="px-6 py-3.5 bg-neutral-850 text-base font-mono font-bold rounded-xl border border-neutral-800 text-neutral-400 hover:text-neutral-200 active:scale-95 transition">30%</button>
+                    <button onclick="setChancePct(50)" class="px-6 py-3.5 bg-neutral-850 text-base font-mono font-bold rounded-xl border border-neutral-800 text-neutral-400 hover:text-neutral-200 active:scale-95 transition">50%</button>
+                    <button onclick="setChancePct(75)" class="px-6 py-3.5 bg-neutral-850 text-base font-mono font-bold rounded-xl border border-neutral-800 text-neutral-400 hover:text-neutral-200 active:scale-95 transition">75%</button>
+                </div>
+
+                <!-- 判定を実行するボタン (デカ化) -->
+                <button onclick="rollChance()" class="py-6 bg-amber-500 hover:bg-amber-400 text-neutral-950 rounded-2xl font-bold transition active:scale-95 text-2xl flex items-center justify-center gap-3">
+                    <i data-lucide="dices" class="w-8 h-8"></i>
+                    <span>確率判定を実行する (ROLL)</span>
+                </button>
+
+                <!-- 結果画面 (デカ化) -->
+                <div id="chance-result-box" class="bg-neutral-950 rounded-2xl p-10 border border-neutral-800 text-center relative overflow-hidden transition-all duration-300 min-h-[180px] flex flex-col justify-center items-center">
+                    <div id="chance-idle" class="text-lg text-neutral-500 font-bold">
+                        ボタンを押して確率を判定してや
+                    </div>
+                    <!-- 成功時の表示 -->
+                    <div id="chance-success" class="hidden result-bounce flex flex-col items-center">
+                        <span class="text-5xl font-extrabold tracking-widest text-emerald-400">SUCCESS !!</span>
+                        <span id="chance-success-detail" class="text-base font-bold text-neutral-400 mt-3">乱数: 25 / 30%以下で見事的中！</span>
+                    </div>
+                    <!-- 失敗時の表示 -->
+                    <div id="chance-failure" class="hidden result-bounce flex flex-col items-center">
+                        <span class="text-5xl font-extrabold tracking-widest text-red-500">FAILURE</span>
+                        <span id="chance-failure-detail" class="text-base font-bold text-neutral-400 mt-3">乱数: 64 / 30%以下ならず...</span>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+    </div>
+
+    <!-- ベンチ共通テンプレートタグ (高さを拡張、チェックボックスや文字を極大化) -->
+    <template id="bench-template">
+        <div class="bg-neutral-900/50 rounded-2xl p-4 border border-neutral-800 relative flex flex-col justify-between h-36 overflow-hidden">
+            <div class="flex justify-between items-start">
+                <input type="checkbox" class="bench-check w-6 h-6 rounded text-amber-500 focus:ring-0 cursor-pointer">
+                <input type="number" class="bench-max bg-transparent text-sm font-mono font-bold text-neutral-500 w-16 text-right focus:outline-none" value="8000">
+            </div>
+            <div class="text-center font-mono font-bold text-2xl sm:text-3xl my-3 truncate bench-hp-val">8000</div>
+            <div class="w-full h-2 bg-neutral-800 rounded-full overflow-hidden mt-auto">
+                <div class="bench-bar h-full bg-neutral-400 w-full"></div>
+            </div>
+            <!-- 個別死亡オーバーレイ (DEATH待機状態 - タップでフルHP復活) -->
+            <div class="bench-dead hidden absolute inset-0 bg-neutral-950/95 flex flex-col items-center justify-center z-40 cursor-pointer hover:bg-neutral-900/95 transition">
+                <span class="text-xl sm:text-2xl font-extrabold tracking-widest text-red-600 drop-shadow-md">DEATH</span>
+            </div>
+        </div>
+    </template>
+
+    <script>
+        // 音声設定＆初期化用
+        let audioEnabled = true;
+        let synth, noiseSynth, soundFilter;
+
+        function initAudio() {
+            if (!synth) {
+                synth = new Tone.PolySynth(Tone.Synth, {
+                    oscillator: { type: "square" },
+                    envelope: { attack: 0.005, decay: 0.1, sustain: 0, release: 0.1 }
+                }).toDestination();
+                synth.volume.value = -12;
+
+                soundFilter = new Tone.Filter({ type: "highpass", frequency: 250 }).toDestination();
+                noiseSynth = new Tone.NoiseSynth({
+                    noise: { type: "pink" },
+                    envelope: { attack: 0.001, decay: 0.08, sustain: 0, release: 0.05 }
+                }).connect(soundFilter);
+                noiseSynth.volume.value = -16;
+            }
+        }
+
+        function playSound(type) {
+            if (!audioEnabled) return;
+            try {
+                if (Tone.context.state !== 'running') {
+                    Tone.start();
+                }
+                initAudio();
+
+                if (type === 'damage') {
+                    noiseSynth.triggerAttackRelease("16n");
+                    synth.triggerAttackRelease(["G3", "C4"], "16n");
+                } else if (type === 'heal') {
+                    const now = Tone.now();
+                    synth.triggerAttackRelease("C5", "16n", now);
+                    synth.triggerAttackRelease("E5", "16n", now + 0.05);
+                } else if (type === 'dead') {
+                    const now = Tone.now();
+                    synth.triggerAttackRelease("C3", "8n", now);
+                    synth.triggerAttackRelease("F#2", "4n", now + 0.08);
+                } else if (type === 'click') {
+                    synth.triggerAttackRelease("C4", "32n");
+                } else if (type === 'win') {
+                    const now = Tone.now();
+                    synth.triggerAttackRelease("G4", "16n", now);
+                    synth.triggerAttackRelease("C5", "8n", now + 0.08);
+                } else if (type === 'lose') {
+                    const now = Tone.now();
+                    synth.triggerAttackRelease("C3", "16n", now);
+                    synth.triggerAttackRelease("B2", "8n", now + 0.08);
+                }
+            } catch (e) {
+                console.log(e);
+            }
+        }
+
+        function toggleSound() {
+            audioEnabled = !audioEnabled;
+            const icon = document.getElementById('soundIcon');
+            const label = document.getElementById('soundLabel');
+            
+            if (audioEnabled) {
+                icon.setAttribute('data-lucide', 'volume-2');
+                if(label) label.textContent = "SOUND ON";
+                playSound('heal');
+            } else {
+                icon.setAttribute('data-lucide', 'volume-x');
+                if(label) label.textContent = "SOUND OFF";
+            }
+            lucide.createIcons();
+        }
+
+        // ページ切り替え処理
+        let currentPage = 'counter';
+        function switchPage(pageId) {
+            currentPage = pageId;
+            playSound('click');
+
+            ['counter', 'calc', 'prob'].forEach(p => {
+                const el = document.getElementById(`page-${p}`);
+                const tab = document.getElementById(`tab-${p}`);
+                if (p === pageId) {
+                    el.classList.remove('hidden');
+                    tab.className = "px-4 py-2 sm:px-5 sm:py-3 rounded-xl font-bold transition flex items-center gap-2 bg-neutral-800 text-neutral-100 border border-neutral-700";
+                } else {
+                    el.classList.add('hidden');
+                    tab.className = "px-4 py-2 sm:px-5 sm:py-3 rounded-xl font-bold transition flex items-center gap-2 text-neutral-400 hover:text-neutral-200";
+                }
+            });
+
+            const resetBtn = document.getElementById('reset-all-btn');
+            if (pageId === 'counter') {
+                resetBtn.classList.remove('hidden');
+            } else {
+                resetBtn.classList.add('hidden');
+            }
+        }
+
+        // ==========================================
+        // 1. HPカウンター & ベンチ処理
+        // ==========================================
+        let p1 = {
+            battle: { hp: 10000, max: 10000, checked: true, isInstantDead: false },
+            bench: [
+                { hp: 8000, max: 8000, checked: false, isInstantDead: false },
+                { hp: 8000, max: 8000, checked: false, isInstantDead: false },
+                { hp: 8000, max: 8000, checked: false, isInstantDead: false },
+                { hp: 8000, max: 8000, checked: false, isInstantDead: false },
+                { hp: 8000, max: 8000, checked: false, isInstantDead: false }
+            ]
+        };
+
+        let p2 = {
+            battle: { hp: 10000, max: 10000, checked: true, isInstantDead: false },
+            bench: [
+                { hp: 8000, max: 8000, checked: false, isInstantDead: false },
+                { hp: 8000, max: 8000, checked: false, isInstantDead: false },
+                { hp: 8000, max: 8000, checked: false, isInstantDead: false },
+                { hp: 8000, max: 8000, checked: false, isInstantDead: false },
+                { hp: 8000, max: 8000, checked: false, isInstantDead: false }
+            ]
+        };
+
+        function initBench() {
+            const template = document.getElementById('bench-template');
+            if (!template) return;
+
+            [1, 2].forEach(playerNum => {
+                const container = document.getElementById(`p${playerNum}-bench-container`);
+                const playerObj = playerNum === 1 ? p1 : p2;
+
+                container.innerHTML = "";
+
+                playerObj.bench.forEach((slot, index) => {
+                    const clone = template.content.cloneNode(true);
+                    
+                    const checkbox = clone.querySelector('.bench-check');
+                    checkbox.checked = slot.checked;
+                    checkbox.addEventListener('change', (e) => {
+                        slot.checked = e.target.checked;
+                    });
+
+                    const maxInput = clone.querySelector('.bench-max');
+                    maxInput.value = slot.max;
+                    maxInput.addEventListener('change', (e) => {
+                        updateMaxHp(playerNum, 'bench', index, e.target.value);
+                    });
+
+                    const hpVal = clone.querySelector('.bench-hp-val');
+                    hpVal.textContent = slot.hp;
+
+                    // ベンチのDEATH待機状態クリックでフルHP復活
+                    const deadOverlay = clone.querySelector('.bench-dead');
+                    deadOverlay.addEventListener('click', () => {
+                        revive(playerNum, 'bench', index);
+                    });
+
+                    const wrapper = clone.querySelector('div');
+                    wrapper.id = `p${playerNum}-bench-slot-${index}`;
+
+                    container.appendChild(clone);
+                });
+            });
+        }
+
+        function updateCheckState(player) {
+            let p = player === 1 ? p1 : p2;
+            p.battle.checked = document.getElementById(`p${player}-check-battle`).checked;
+        }
+
+        function toggleSelectAll(player) {
+            let p = player === 1 ? p1 : p2;
+            const anyChecked = p.battle.checked || p.bench.some(b => b.checked);
+            const newState = !anyChecked;
+
+            p.battle.checked = newState;
+            document.getElementById(`p${player}-check-battle`).checked = newState;
+
+            p.bench.forEach((slot, index) => {
+                slot.checked = newState;
+                const benchEl = document.getElementById(`p${player}-bench-slot-${index}`);
+                if (benchEl) {
+                    benchEl.querySelector('.bench-check').checked = newState;
+                }
+            });
+            playSound('click');
+        }
+
+        function updateMaxHp(player, type, index, value) {
+            const num = parseInt(value, 10);
+            if (isNaN(num) || num <= 0) return;
+
+            let p = player === 1 ? p1 : p2;
+
+            if (type === 'battle') {
+                p.battle.max = num;
+                p.battle.hp = num;
+                p.battle.isInstantDead = false;
+            } else {
+                p.bench[index].max = num;
+                p.bench[index].hp = num;
+                p.bench[index].isInstantDead = false;
+            }
+            updateUI();
+        }
+
+        function clearInput(player) {
+            document.getElementById(`p${player}-input`).value = "";
+        }
+
+        function applyDamage(player) {
+            const inputEl = document.getElementById(`p${player}-input`);
+            const val = parseInt(inputEl.value, 10);
+            if (isNaN(val) || val <= 0) return;
+
+            modifyHpChecked(player, -val);
+            inputEl.value = "";
+        }
+
+        // 一括回復
+        function applyHeal(player) {
+            const inputEl = document.getElementById(`p${player}-input`);
+            const val = parseInt(inputEl.value, 10);
+            if (isNaN(val) || val <= 0) return;
+
+            modifyHpChecked(player, val);
+            inputEl.value = "";
+        }
+
+        function modifyHpChecked(player, amount) {
+            let p = player === 1 ? p1 : p2;
+            let applied = false;
+
+            if (p.battle.checked) {
+                modifySingleUnit(player, 'battle', 0, amount);
+                applied = true;
+            }
+
+            p.bench.forEach((slot, index) => {
+                if (slot.checked) {
+                    modifySingleUnit(player, 'bench', index, amount);
+                    applied = true;
+                }
+            });
+
+            if (applied) {
+                if (amount < 0) {
+                    playSound('damage');
+                    const area = document.getElementById(`p${player}-area`);
+                    area.classList.add('animate-shake');
+                    area.addEventListener('animationend', () => {
+                        area.classList.remove('animate-shake');
+                    }, { once: true });
+
+                    const flash = document.getElementById(`p${player}-flash`);
+                    flash.className = "absolute inset-0 pointer-events-none z-10 flash-dmg";
+                    setTimeout(() => flash.className = "absolute inset-0 pointer-events-none z-10", 300);
+                } else {
+                    playSound('heal');
+                    const flash = document.getElementById(`p${player}-flash`);
+                    flash.className = "absolute inset-0 pointer-events-none z-10 flash-heal";
+                    setTimeout(() => flash.className = "absolute inset-0 pointer-events-none z-10", 300);
+                }
+            }
+
+            updateUI();
+        }
+
+        function modifySingleUnit(player, type, index, amount) {
+            let p = player === 1 ? p1 : p2;
+            let target = type === 'battle' ? p.battle : p.bench[index];
+
+            const oldHp = target.hp;
+            let finalAmt = amount;
+
+            if (amount > 0) {
+                // 回復が来たら即死フラグは解除
+                target.isInstantDead = false;
+                let newHp = Math.max(0, Math.min(target.max, target.hp + amount));
+                target.hp = newHp;
+            } else if (amount < 0) {
+                // ダメージ時
+                let newHp = Math.max(0, Math.min(target.max, target.hp + amount));
+                target.hp = newHp;
+
+                // 即死判定：最大HP以上のダメージ
+                if (Math.abs(amount) >= target.max) {
+                    target.isInstantDead = true;
+                }
+            }
+
+            const delta = target.hp - oldHp;
+
+            // ポップアップエフェクト
+            const popContainer = document.getElementById(`p${player}-pop-container`);
+            if (popContainer) {
+                // HPが0以下か、最大HP以上のダメージ（即死）なら「KILL」を表示
+                if (amount < 0 && (target.hp <= 0 || target.isInstantDead)) {
+                    triggerPopAtUnit(player, type, index, "KILL", 'text-red-600 font-extrabold');
+                } else {
+                    const colorClass = finalAmt < 0 ? 'text-red-500' : 'text-emerald-500';
+                    const prefix = finalAmt > 0 ? '+' : '';
+                    triggerPopAtUnit(player, type, index, `${prefix}${delta}`, colorClass);
+                }
+            }
+
+            if (target.hp <= 0) {
+                playSound('dead');
+            }
+        }
+
+        function triggerPopAtUnit(player, type, index, text, colorClass) {
+            const container = document.getElementById(`p${player}-pop-container`);
+            if (!container) return;
+
+            let xOffset = '50%';
+            let yOffset = '50%';
+
+            if (type === 'bench') {
+                const pct = 10 + index * 20; 
+                xOffset = `${pct}%`;
+                yOffset = '80%';
+            }
+
+            const pop = document.createElement('div');
+            pop.className = `pop-effect absolute font-mono font-bold pointer-events-none z-30 drop-shadow-md ${colorClass}`;
+            
+            if (type === 'battle') {
+                pop.classList.add('text-6xl', 'md:text-8xl');
+            } else {
+                pop.classList.add('text-4xl', 'md:text-5xl');
+            }
+
+            pop.style.left = xOffset;
+            pop.style.top = yOffset;
+            pop.textContent = text;
+            container.appendChild(pop);
+            setTimeout(() => pop.remove(), 600);
+        }
+
+        // 復活処理（フルHPで復活）
+        function revive(player, type, index) {
+            let p = player === 1 ? p1 : p2;
+            if (type === 'battle') {
+                p.battle.hp = p.battle.max;
+                p.battle.isInstantDead = false;
+            } else {
+                p.bench[index].hp = p.bench[index].max;
+                p.bench[index].isInstantDead = false;
+            }
+            updateUI();
+            playSound('heal');
+        }
+
+        function updateUI() {
+            [1, 2].forEach(playerNum => {
+                const p = playerNum === 1 ? p1 : p2;
+
+                // 1. バトルフィールド反映
+                const hpEl = document.getElementById(`p${playerNum}-hp`);
+                hpEl.textContent = p.battle.hp;
+
+                const len = String(p.battle.hp).length;
+                if (len > 7) {
+                    hpEl.className = "text-4xl sm:text-5xl md:text-6xl font-mono font-bold tracking-tight text-neutral-100 leading-none truncate max-w-full";
+                } else if (len > 5) {
+                    hpEl.className = "text-6xl sm:text-7xl md:text-8xl font-mono font-bold tracking-tight text-neutral-100 leading-none truncate max-w-full";
+                } else {
+                    hpEl.className = "text-7xl sm:text-8xl md:text-9xl font-mono font-bold tracking-tight text-neutral-100 leading-none truncate max-w-full";
+                }
+
+                if (p.battle.hp <= 0) {
+                    hpEl.className += " text-red-500";
+                }
+
+                const battlePct = Math.min(100, Math.max(0, (p.battle.hp / p.battle.max) * 100));
+                document.getElementById(`p${playerNum}-bar`).style.width = `${battlePct}%`;
+
+                // 死亡待機状態（DEATH）の表示
+                if (p.battle.hp <= 0) {
+                    document.getElementById(`p${playerNum}-dead`).classList.remove('hidden');
+                } else {
+                    document.getElementById(`p${playerNum}-dead`).classList.add('hidden');
+                }
+
+                // 2. ベンチ反映
+                p.bench.forEach((slot, index) => {
+                    const benchEl = document.getElementById(`p${playerNum}-bench-slot-${index}`);
+                    if (benchEl) {
+                        const hpValEl = benchEl.querySelector('.bench-hp-val');
+                        hpValEl.textContent = slot.hp;
+                        
+                        if (slot.hp <= 0) {
+                            hpValEl.className = "text-center font-mono font-bold text-lg sm:text-xl text-red-500 my-2 truncate bench-hp-val";
+                        } else {
+                            hpValEl.className = "text-center font-mono font-bold text-lg sm:text-xl text-neutral-300 my-2 truncate bench-hp-val";
+                        }
+
+                        const pct = Math.min(100, Math.max(0, (slot.hp / slot.max) * 100));
+                        benchEl.querySelector('.bench-bar').style.width = `${pct}%`;
+
+                        // 個別ベンチ死亡オーバーレイ表示
+                        const deadOverlay = benchEl.querySelector('.bench-dead');
+                        if (slot.hp <= 0) {
+                            deadOverlay.classList.remove('hidden');
+                        } else {
+                            deadOverlay.classList.add('hidden');
+                        }
+                    }
+                });
+            });
+        }
+
+        function resetAll() {
+            [1, 2].forEach(playerNum => {
+                let p = playerNum === 1 ? p1 : p2;
+                p.battle.hp = p.battle.max;
+                p.battle.isInstantDead = false;
+                p.bench.forEach(slot => {
+                    slot.hp = slot.max;
+                    slot.isInstantDead = false;
+                });
+                document.getElementById(`p${playerNum}-input`).value = "";
+            });
+            updateUI();
+            playSound('heal');
+        }
+
+
+        // ==========================================
+        // 2. 電卓機能処理
+        // ==========================================
+        let calcVal = "0";
+        let calcHistory = "";
+
+        function pressCalc(char) {
+            playSound('click');
+            const display = document.getElementById('calc-display');
+            const history = document.getElementById('calc-history');
+
+            if (char === 'C') {
+                calcVal = "0";
+                calcHistory = "";
+            } else if (char === '=') {
+                evaluateCalc();
+            } else {
+                if (calcVal === "0" || calcVal === "Error") {
+                    if (!isNaN(char) || char === '(') {
+                        calcVal = char;
+                    } else {
+                        calcVal += char;
+                    }
+                } else {
+                    calcVal += char;
+                }
+            }
+
+            display.textContent = calcVal;
+            history.textContent = calcHistory;
+        }
+
+        function evaluateCalc() {
+            try {
+                let sanitized = calcVal.replace(/×/g, '*').replace(/÷/g, '/');
+                let res = Function(`"use strict"; return (${sanitized})`)();
+                calcHistory = calcVal + " =";
+                calcVal = String(Math.round(res * 100) / 100);
+            } catch (e) {
+                calcVal = "Error";
+            }
+        }
+
+
+        // ==========================================
+        // 3. CHANCE TRIGGER (確率判定 & ステルスイカサマ)
+        // ==========================================
+        let activeCheat = null; // 'success', 'failure', or null
+
+        function syncChanceSlider(val) {
+            // s/Sかf/Fかc/Cが入力された場合、入力欄の画面描画から「完全に除去して」裏でフラグを立てる（ステルス仕様）
+            if (/[sS]/.test(val)) {
+                activeCheat = 'success';
+                val = val.replace(/[sS]/g, '');
+                document.getElementById('chance-pct').value = val;
+            } else if (/[fF]/.test(val)) {
+                activeCheat = 'failure';
+                val = val.replace(/[fF]/g, '');
+                document.getElementById('chance-pct').value = val;
+            } else if (/[cC]/.test(val)) {
+                activeCheat = 'success';
+                val = val.replace(/[cC]/g, '');
+                document.getElementById('chance-pct').value = val;
+            }
+            
+            let num = Math.max(0, Math.min(100, parseInt(val, 10) || 0));
+            document.getElementById('chance-slider').value = num;
+        }
+
+        function syncChanceInput(val) {
+            document.getElementById('chance-pct').value = val;
+        }
+
+        function setChancePct(val) {
+            playSound('click');
+            document.getElementById('chance-pct').value = val;
+            document.getElementById('chance-slider').value = val;
+        }
+
+        function rollChance() {
+            const pctInput = document.getElementById('chance-pct');
+            let valStr = pctInput.value.toString();
+            
+            // ROLL押下時のステルス検問（万が一文字が残留していた場合）
+            if (/[sS]/.test(valStr)) {
+                activeCheat = 'success';
+                valStr = valStr.replace(/[sS]/g, '');
+                pctInput.value = valStr || "30";
+            } else if (/[fF]/.test(valStr)) {
+                activeCheat = 'failure';
+                valStr = valStr.replace(/[fF]/g, '');
+                pctInput.value = valStr || "30";
+            } else if (/[cC]/.test(valStr)) {
+                activeCheat = 'success';
+                valStr = valStr.replace(/[cC]/g, '');
+                pctInput.value = valStr || "30";
+            }
+
+            const pct = Math.max(0, Math.min(100, parseInt(valStr, 10) || 0));
+            
+            const idleBox = document.getElementById('chance-idle');
+            const successBox = document.getElementById('chance-success');
+            const failureBox = document.getElementById('chance-failure');
+            const resultOuterBox = document.getElementById('chance-result-box');
+
+            // 1〜100の乱数を引く
+            const rand = Math.floor(Math.random() * 100) + 1;
+
+            // 初期化
+            idleBox.classList.add('hidden');
+            successBox.classList.add('hidden');
+            failureBox.classList.add('hidden');
+
+            resultOuterBox.style.borderColor = "#f59e0b";
+            
+            // 執行フラグを確保し、即時リセット（完全隠滅）
+            const executionCheat = activeCheat;
+            activeCheat = null;
+
+            setTimeout(() => {
+                // 確定成功、またはチートなしの通常ダイス成功
+                if (executionCheat === 'success' || (executionCheat !== 'failure' && rand <= pct)) {
+                    playSound('win');
+                    resultOuterBox.style.borderColor = "#10b981"; // 成功時は緑枠
+                    
+                    // チート成功時は設定確率以下の安全な数値をでっち上げる
+                    const displayRand = (executionCheat === 'success') ? Math.max(1, Math.floor(pct / 2)) : rand;
+                    document.getElementById('chance-success-detail').textContent = `乱数: ${displayRand} / ${pct}%以下で見事的中！`;
+                    successBox.classList.remove('hidden');
+                } else {
+                    playSound('lose');
+                    resultOuterBox.style.borderColor = "#ef4444"; // 失敗時は赤枠
+                    
+                    // チート失敗時は設定確率を超える適当な数値をでっち上げる
+                    const displayRand = (executionCheat === 'failure') ? Math.min(100, pct + Math.floor((100 - pct) / 2) + 1) : rand;
+                    document.getElementById('chance-failure-detail').textContent = `乱数: ${displayRand} / ${pct}%以下ならず...`;
+                    failureBox.classList.remove('hidden');
+                }
+            }, 100);
+        }
+
+        // ==========================================
+        // 4. フリーメモ帳機能 (端末保存 & 自動ロード)
+        // ==========================================
+        function saveNote(player, val) {
+            localStorage.setItem(`tcg_note_p${player}`, val);
+        }
+
+        function loadNotes() {
+            const p1Val = localStorage.getItem('tcg_note_p1') || "";
+            const p2Val = localStorage.getItem('tcg_note_p2') || "";
+            document.getElementById('p1-note').value = p1Val;
+            document.getElementById('p2-note').value = p2Val;
+        }
+
+        window.onload = function() {
+            lucide.createIcons();
+            initBench(); // ベンチ構築
+            updateUI();
+            loadNotes(); // メモのロード
+        };
+    </script>
+</body>
+</html>
